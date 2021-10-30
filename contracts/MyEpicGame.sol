@@ -23,6 +23,18 @@ contract MyEpicGame is ERC721 {
     uint defence;
   }
 
+  struct BigBoss {
+  string name;
+  string imageURI;
+  uint hp;
+  uint maxHp;
+  uint attackDamage;
+    uint defence;
+}
+
+BigBoss public bigBoss;
+address public immutable WETH;
+
   using Counters for Counters.Counter;
   Counters.Counter private _tokenIds;
 
@@ -32,17 +44,34 @@ contract MyEpicGame is ERC721 {
 
   mapping(address => uint256) public nftHolders;
 
+  event CharacterNFTMinted(address sender, uint256 tokenId, uint256 characterIndex);
+  event AttackComplete(uint newBossHp, uint newPlayerHp);
+
   constructor(
     string[] memory characterNames,
     string[] memory characterImageURIs,
     uint[] memory characterHp,
     uint[] memory characterAttackDmg,
-    uint[] memory characterDefence
+    uint[] memory characterDefence,
+    string memory bossName, // These new variables would be passed in via run.js or deploy.js.
+    string memory bossImageURI,
+    uint bossHp,
+    uint bossAttackDamage,
+    uint bossDefence,
+    address _WETH
   )
   ERC721("Heroes", "HERO")
   {
-    // Loop through all the characters, and save their values in our contract so
-    // we can use them later when we mint our NFTs.
+    bigBoss = BigBoss({
+    name: bossName,
+    imageURI: bossImageURI,
+    hp: bossHp,
+    maxHp: bossHp,
+    attackDamage: bossAttackDamage,
+    defence:bossDefence
+  });
+        WETH=_WETH;
+
     for(uint i = 0; i < characterNames.length; i += 1) {
       defaultCharacters.push(CharacterAttributes({
         characterIndex: i,
@@ -53,12 +82,6 @@ contract MyEpicGame is ERC721 {
         attackDamage: characterAttackDmg[i],
         defence: characterDefence[i]
       }));
-
-      CharacterAttributes memory c = defaultCharacters[i];
-        console.log("Done initializing");
-        console.log("Name:", c.name," Img: ", c.imageURI);
-        console.log("Hp:", c.hp," Defence: ", c.defence);
-
     }
         _tokenIds.increment();
   }
@@ -78,13 +101,13 @@ contract MyEpicGame is ERC721 {
       defence: defaultCharacters[_characterIndex].defence
     });
 
-    console.log("Minted NFT w/ tokenId %s and characterIndex %s", newItemId, _characterIndex);
     
     // Keep an easy way to see who owns what NFT.
     nftHolders[msg.sender] = newItemId;
 
     // Increment the tokenId for the next person that uses it.
     _tokenIds.increment();
+    emit CharacterNFTMinted(msg.sender, newItemId, _characterIndex);
   }
 
   function tokenURI(uint256 _tokenId) public view override returns (string memory) {
@@ -118,4 +141,64 @@ contract MyEpicGame is ERC721 {
   
   return output;
 }
+function attackBoss() public {
+  uint256 nftTokenIdOfPlayer = nftHolders[msg.sender];
+  CharacterAttributes storage player = nftHolderAttributes[nftTokenIdOfPlayer];
+  require (
+    player.hp > 0,
+    "Error: character must have HP to attack boss."
+  );
+
+  require (
+    bigBoss.hp > 0,
+    "Error: boss must have HP to attack boss."
+  );
+
+  if ((bigBoss.hp+bigBoss.defence) < player.attackDamage) {
+    bigBoss.hp = 0;
+  } else {
+    bigBoss.hp = bigBoss.hp+bigBoss.defence - player.attackDamage;
+  }
+
+  if ((player.hp+player.defence) < bigBoss.attackDamage) {
+    player.hp = 0;
+  } else {
+    player.hp = player.hp+player.defence - bigBoss.attackDamage;
+  }
+  
+
+  emit AttackComplete(bigBoss.hp, player.hp);
+}
+function revive() payable public{
+  uint256 nftTokenIdOfPlayer = nftHolders[msg.sender];
+  CharacterAttributes storage player = nftHolderAttributes[nftTokenIdOfPlayer];
+  require (
+    player.hp < player.maxHp,
+    "Error: character has MaxHp."
+  );
+  console.log((msg.value/10000000000000000)*10);
+
+
+  // unit reqHp=msg.value*
+}
+function checkIfUserHasNFT() public view returns (CharacterAttributes memory) {
+  // Get the tokenId of the user's character NFT
+  uint256 userNftTokenId = nftHolders[msg.sender];
+  // If the user has a tokenId in the map, return their character.
+  if (userNftTokenId > 0) {
+    return nftHolderAttributes[userNftTokenId];
+  }
+  // Else, return an empty character.
+  else {
+    CharacterAttributes memory emptyStruct;
+    return emptyStruct;
+   }
+}
+function getAllDefaultCharacters() public view returns (CharacterAttributes[] memory) {
+  return defaultCharacters;
+}
+function getBigBoss() public view returns (BigBoss memory) {
+  return bigBoss;
+}
+
 }
